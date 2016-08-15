@@ -49,7 +49,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         // 壁用のノード
         wallNode = SKNode()
-        addChild(wallNode)
+        scrollNode.addChild(wallNode)
  
         // アイテム用のノード
         itemNode = SKNode()
