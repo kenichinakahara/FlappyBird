@@ -20,7 +20,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     let groundCategory: UInt32 = 1 << 1     // 0...00010
     let wallCategory: UInt32 = 1 << 2       // 0...00100
     let scoreCategory: UInt32 = 1 << 3      // 0...01000
-    let itemCategory: UInt32 = 1 << 4       // 0...01001 (課題用) アイテム衝突判定用
+    let itemCategory: UInt32 = 1 << 4       // 0...10000 (課題用) アイテム衝突判定用
     
     // スコア
     var score = 0
