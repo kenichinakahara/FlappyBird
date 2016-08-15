@@ -13,18 +13,25 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     var scrollNode:SKNode!
     var wallNode:SKNode!
     var bird:SKSpriteNode!
+    var itemNode:SKNode! // (課題用)アイテムノード追加
     
     // 衝突判定カテゴリー
     let birdCategory: UInt32 = 1 << 0       // 0...00001
     let groundCategory: UInt32 = 1 << 1     // 0...00010
     let wallCategory: UInt32 = 1 << 2       // 0...00100
     let scoreCategory: UInt32 = 1 << 3      // 0...01000
+    let itemCategory: UInt32 = 1 << 4       // 0...01001 (課題用) アイテム衝突判定用
     
     // スコア
     var score = 0
     var scoreLabelNode:SKLabelNode!
     var bestScoreLabelNode:SKLabelNode!
     let userDefaults:NSUserDefaults = NSUserDefaults.standardUserDefaults()
+
+    // (課題用) アイテムスコア
+    var itemScore = 0
+    var itemScoreLabelNode:SKLabelNode!
+    var bestItemScoreLabelNode:SKLabelNode!
     
     // SKView上にシーンが表示されたときに呼ばれるメソッド
     override func didMoveToView(view: SKView) {
@@ -44,11 +51,16 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         wallNode = SKNode()
         addChild(wallNode)
  
+        // アイテム用のノード
+        itemNode = SKNode()
+        scrollNode.addChild(itemNode)
+        
         setupGround()
         setupCloud()
         setupWall()
         setupBird()
         setupScoreLabel()
+        setupItem()
     }
     
     func setupGround(){
@@ -247,7 +259,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // 衝突のカテゴリー設定
         bird.physicsBody?.categoryBitMask = birdCategory
         bird.physicsBody?.collisionBitMask = groundCategory | wallCategory
-        bird.physicsBody?.contactTestBitMask = groundCategory | wallCategory
+        bird.physicsBody?.contactTestBitMask = groundCategory | wallCategory | itemCategory // (課題用)アイテム追加
         
         // アニメーションを設定
         bird.runAction(flap)
@@ -255,6 +267,69 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         // スプライトを追加する
         addChild(bird)
     }
+    
+    // (課題用)アイテム
+    func setupItem(){
+        
+        // アイテムの画像を読み込む
+        let itemTexture = SKTexture(imageNamed: "stag")
+        itemTexture.filteringMode = SKTextureFilteringMode.Nearest
+        
+        // 地面の画像を読み込む
+        let groundTexture = SKTexture(imageNamed: "ground")
+        
+        // 移動する距離を計算
+        let movingDistance = CGFloat(self.frame.size.width + itemTexture.size().width * 2)
+        
+        // 画面外まで移動するアクションを作成
+        let moveItem = SKAction.moveByX(-movingDistance, y: 0, duration:2.0)
+        
+        // 自身を取り除くアクションを作成
+        let removeItem = SKAction.removeFromParent()
+        
+        // 2つのアニメーションを順に実行するアクションを作成
+        let itemAnimation = SKAction.sequence([moveItem, removeItem])
+        
+        // アイテムを生成
+        let createItemAnimation = SKAction.runBlock({
+            let item = SKSpriteNode(texture: itemTexture)
+            item.zPosition = 10.0 // スコアより奥
+            
+            // アイテムのY座標を上下ランダムにさせるときの最大値
+            let random_y_range = self.frame.size.height
+            
+            // 1〜random_y_rangeまでのランダムな整数を生成
+            let random_y = arc4random_uniform(UInt32(random_y_range))
+            let item_y = CGFloat(random_y)
+            item.position = CGPoint(x: self.frame.size.width + itemTexture.size().width * 2, y: item_y / 2 + groundTexture.size().height)
+            self.itemNode.addChild(item)
+            
+            // スプライトに物理演算を設定する
+            item.physicsBody = SKPhysicsBody(rectangleOfSize: itemTexture.size())
+            item.physicsBody?.categoryBitMask = self.itemCategory
+            
+            // 衝突のカテゴリー設定なし
+            item.physicsBody?.collisionBitMask = 0
+            
+            // 衝突の時に動かないように設定する
+            item.physicsBody?.dynamic = false
+            
+            // 衝突した時に回転させない
+            self.bird.physicsBody?.allowsRotation = false
+            
+            item.runAction(itemAnimation)
+            
+        })
+        
+        // 次のアイテム作成までの待ち時間のアクションを作成
+        let waitAnimation = SKAction.waitForDuration(2)
+        
+        // アイテムを作成->待ち時間->アイテムを作成を無限に繰り替えるアクションを作成
+        let repeatForeverAnimation = SKAction.repeatActionForever(SKAction.sequence([createItemAnimation, waitAnimation]))
+        
+        runAction(repeatForeverAnimation)
+    }
+    
     
     // 画面をタップした時に呼ばれる
     override func touchesBegan(touches: Set<UITouch>, withEvent event: UIEvent?) {
@@ -294,6 +369,33 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             } // --- ここまで追加---
             
             
+        } else if (contact.bodyA.categoryBitMask & itemCategory) == itemCategory||(contact.bodyB.categoryBitMask & itemCategory) == itemCategory {
+            
+            // (課題用) アイテムと衝突した
+            print("ItemUp")
+            itemScore += 1
+            itemScoreLabelNode.text = "ItemScore:\(itemScore)"
+            
+            let music = SKAction.playSoundFileNamed("item.mp3", waitForCompletion: true)
+            self.runAction(music)
+            
+            // ベストスコア更新か確認する --- ここから ---
+            var bestItemScore = userDefaults.integerForKey("BESTITEM")
+            if itemScore > bestItemScore {
+                bestItemScore = itemScore
+                bestItemScoreLabelNode.text = "Best ItemScore:\(bestItemScore)"
+                userDefaults.setInteger(bestItemScore, forKey: "BESTITEM")
+                userDefaults.synchronize()
+            } // --- ここまで追加---
+            
+            if (contact.bodyA.categoryBitMask & itemCategory) == itemCategory {
+                contact.bodyA.node?.removeFromParent()
+            }
+            
+            if (contact.bodyB.categoryBitMask & itemCategory) == itemCategory {
+                contact.bodyB.node?.removeFromParent()
+            }
+            
         } else {
             // 壁か地面と衝突した
             print("GameOver")
@@ -314,9 +416,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         score = 0
         scoreLabelNode.text = String("Score:\(score)")
         
+        // (課題用) アイテム用
+        itemScore = 0
+        itemScoreLabelNode.text = String("ItemScore:\(itemScore)")
+        
         bird.position = CGPoint(x: self.frame.size.width * 0.2, y:self.frame.size.height * 0.7)
         bird.physicsBody?.velocity = CGVector.zero
-        bird.physicsBody?.collisionBitMask = groundCategory | wallCategory
+        bird.physicsBody?.collisionBitMask = groundCategory | wallCategory | itemCategory // (課題用)アイテム用
         bird.zRotation = 0.0
         
         wallNode.removeAllChildren()
@@ -329,7 +435,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         score = 0
         scoreLabelNode = SKLabelNode()
         scoreLabelNode.fontColor = UIColor.blackColor()
-        scoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 30)
+        scoreLabelNode.fontSize = 20.0 // フォントサイズ変更
+        scoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 20) // 高さ変更
         scoreLabelNode.zPosition = 100 // 一番手前に表示する
         scoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.Left
         scoreLabelNode.text = "Score:\(score)"
@@ -337,13 +444,37 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         
         bestScoreLabelNode = SKLabelNode()
         bestScoreLabelNode.fontColor = UIColor.blackColor()
-        bestScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 60)
+        bestScoreLabelNode.fontSize = 20.0 // フォントサイズ変更
+        bestScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 40) // 高さ変更
         bestScoreLabelNode.zPosition = 100 // 一番手前に表示する
         bestScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.Left
         
         let bestScore = userDefaults.integerForKey("BEST")
         bestScoreLabelNode.text = "Best Score:\(bestScore)"
         self.addChild(bestScoreLabelNode)
+        
+        // (課題用) アイテムスコア用
+        itemScore = 0
+        itemScoreLabelNode = SKLabelNode()
+        itemScoreLabelNode.fontColor = UIColor.blackColor()
+        itemScoreLabelNode.fontSize = 20.0 // フォントサイズ変更
+        itemScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 60) // 高さ変更
+        itemScoreLabelNode.zPosition = 100
+        itemScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.Left
+        itemScoreLabelNode.text = "ItemScore:\(itemScore)"
+        self.addChild(itemScoreLabelNode)
+        
+        bestItemScoreLabelNode = SKLabelNode()
+        bestItemScoreLabelNode.fontColor = UIColor.blackColor()
+        bestItemScoreLabelNode.fontSize = 20.0 // フォントサイズ変更
+        bestItemScoreLabelNode.position = CGPoint(x: 10, y: self.frame.size.height - 80) // 高さ変更
+        bestItemScoreLabelNode.zPosition = 100 // 一番手前に表示する
+        bestItemScoreLabelNode.horizontalAlignmentMode = SKLabelHorizontalAlignmentMode.Left
+        
+        let bestItemScore = userDefaults.integerForKey("BESTITEM")
+        bestItemScoreLabelNode.text = "Best ItemScore:\(bestItemScore)"
+        self.addChild(bestItemScoreLabelNode)
+        
     }
     
 }
